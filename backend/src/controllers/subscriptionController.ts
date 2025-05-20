@@ -1,6 +1,8 @@
 import { Request, Response } from "express";
 import Stripe from "stripe";
 import { config } from "../config";
+import { StripeService } from "../services/stripeService";
+import { User } from "../models/User";
 
 const stripe = new Stripe(config.stripeSecretKey, {
   apiVersion: "2022-11-15",
@@ -73,44 +75,76 @@ export const cancelSubscription = async (req: Request, res: Response) => {
 export const createSubscription = async (req: Request, res: Response) => {
   try {
     const { priceId, paymentMethodId } = req.body;
-    console.log({ priceId, paymentMethodId });
     const userId = req.user?._id;
 
     if (!userId) {
-      return res.status(401).json({ error: "Unauthorized" });
+      return res.status(401).json({ message: "Unauthorized" });
     }
 
-    const customerId = req.user?.stripeCustomerId;
+    // Get user from database
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    // Create or get Stripe customer
+    let customerId = user.stripeCustomerId;
     if (!customerId) {
-      return res.status(404).json({ error: "No Stripe customer found" });
+      const customer = await stripe.customers.create({
+        email: user.email,
+        metadata: {
+          userId: user.id,
+        },
+      });
+      customerId = customer.id;
+      user.stripeCustomerId = customerId;
+      await user.save();
     }
 
-    // Attach the payment method to the customer
-    await stripe.paymentMethods.attach(paymentMethodId, {
-      customer: customerId,
+    // Create subscription
+    const subscription = await StripeService.createSubscription({
+      customerId,
+      priceId,
+      paymentMethodId,
     });
 
-    // Set it as the default payment method
-    await stripe.customers.update(customerId, {
-      invoice_settings: {
-        default_payment_method: paymentMethodId,
-      },
+    // Get the client secret from the subscription's latest invoice
+    const invoice = subscription.latest_invoice as Stripe.Invoice;
+    const paymentIntent = invoice.payment_intent as Stripe.PaymentIntent;
+
+    return res.json({
+      subscriptionId: subscription.id,
+      clientSecret: paymentIntent.client_secret,
+      requiresAction: paymentIntent.status === "requires_action",
     });
-
-    // Create the subscription
-    const subscription = await stripe.subscriptions.create({
-      customer: customerId,
-      items: [{ price: priceId }],
-      payment_behavior: "default_incomplete",
-      payment_settings: { save_default_payment_method: "on_subscription" },
-      expand: ["latest_invoice.payment_intent"],
-    });
-
-    console.log({ subscription });
-
-    return res.json(subscription);
   } catch (error) {
-    console.error("Error creating subscription:", error);
-    return res.status(500).json({ error: "Failed to create subscription" });
+    console.error("Subscription creation error:", error);
+    return res.status(500).json({
+      message:
+        error instanceof Error
+          ? error.message
+          : "Failed to create subscription",
+    });
+  }
+};
+
+export const handleWebhook = async (req: Request, res: Response) => {
+  const sig = req.headers["stripe-signature"];
+
+  try {
+    const event = stripe.webhooks.constructEvent(
+      req.body,
+      sig as string,
+      config.stripeWebhookSecret
+    );
+
+    await StripeService.handleWebhookEvent(event);
+
+    res.json({ received: true });
+  } catch (error) {
+    console.error("Webhook error:", error);
+    res.status(400).json({
+      message: error instanceof Error ? error.message : "Webhook error",
+    });
   }
 };

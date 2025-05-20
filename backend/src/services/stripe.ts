@@ -142,10 +142,12 @@ export class StripeService {
       { status: "canceled" }
     );
 
-    user.subscriptionStatus = "cancelled";
+    // user.subscriptionStatus = "cancelled";
+    user.subscriptionStatus = "inactive";
     await user.save();
   }
 
+  // Handle successful payment
   // Handle successful payment
   private static async handlePaymentSuccess(
     paymentIntent: Stripe.PaymentIntent

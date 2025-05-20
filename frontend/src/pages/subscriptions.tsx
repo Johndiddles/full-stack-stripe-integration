@@ -208,7 +208,7 @@ export default function Subscriptions() {
                 <PlanSelection
                   onSuccess={() => {
                     // Refresh subscriptions list
-                    window.location.reload();
+                    // window.location.reload();
                   }}
                   onError={(error) => setError(error)}
                 />

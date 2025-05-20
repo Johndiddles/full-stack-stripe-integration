@@ -32,8 +32,21 @@ const SubscriptionForm: React.FC<SubscriptionFormProps> = ({
     try {
       // Get card details from the form
       const cardElement = elements.getElement(CardElement);
+      console.log(priceId, cardElement);
+
       if (!cardElement) {
         throw new Error("Card element not found");
+      }
+
+      // Create payment method using Stripe.js
+      const { error: paymentMethodError, paymentMethod } =
+        await stripe.createPaymentMethod({
+          type: "card",
+          card: cardElement,
+        });
+
+      if (paymentMethodError) {
+        throw new Error(paymentMethodError.message);
       }
 
       // Create subscription through backend
@@ -46,9 +59,7 @@ const SubscriptionForm: React.FC<SubscriptionFormProps> = ({
         credentials: "include",
         body: JSON.stringify({
           priceId,
-          cardDetails: {
-            card: cardElement,
-          },
+          paymentMethodId: paymentMethod.id,
         }),
       });
 
@@ -57,13 +68,12 @@ const SubscriptionForm: React.FC<SubscriptionFormProps> = ({
         throw new Error(error.message || "Failed to create subscription");
       }
 
-      const subscription = await response.json();
+      const { clientSecret, requiresAction } = await response.json();
 
-      // Handle subscription status
-      if (subscription.status === "incomplete" && subscription.clientSecret) {
+      if (requiresAction) {
         // Handle 3D Secure authentication if needed
         const { error: confirmError } = await stripe.confirmCardPayment(
-          subscription.clientSecret
+          clientSecret
         );
 
         if (confirmError) {
