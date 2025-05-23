@@ -50,18 +50,21 @@ const SubscriptionForm: React.FC<SubscriptionFormProps> = ({
       }
 
       // Create subscription through backend
-      const response = await fetch("http://localhost:3001/api/subscriptions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-        credentials: "include",
-        body: JSON.stringify({
-          priceId,
-          paymentMethodId: paymentMethod.id,
-        }),
-      });
+      const response = await fetch(
+        "http://localhost:4000/api/payments/create-checkout-session",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+          credentials: "include",
+          body: JSON.stringify({
+            priceId,
+            // paymentMethodId: paymentMethod.id,
+          }),
+        }
+      );
 
       if (!response.ok) {
         const error = await response.json();

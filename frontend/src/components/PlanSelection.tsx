@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+"use client";
+import React, { useEffect, useState } from "react";
 import { Plan, plans } from "@/config/plans";
 import SubscriptionForm from "./SubscriptionForm";
 
@@ -11,7 +12,30 @@ const PlanSelection: React.FC<PlanSelectionProps> = ({
   onSuccess,
   onError,
 }) => {
+  const [allPlans, setAllPlans] = useState<Plan[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
+
+  useEffect(() => {
+    const fetchPlans = async () => {
+      const response = await fetch("http://localhost:4000/api/tiers");
+      const data = await response.json();
+      console.log({ data });
+      setAllPlans(
+        data.data.map((plan: any) => ({
+          id: plan._id,
+          name: plan.name,
+          description: plan.intendedUsers,
+          price: plan.monthlyPrice,
+          interval: "month",
+          features: plan.keyFeatures,
+          stripePriceId: plan.stripeMonthlyPriceId,
+        }))
+      );
+    };
+    fetchPlans();
+  }, []);
+
+  console.log({ allPlans });
 
   if (selectedPlan) {
     return (
@@ -48,7 +72,7 @@ const PlanSelection: React.FC<PlanSelectionProps> = ({
 
   return (
     <div className="mt-12 space-y-4 sm:mt-16 sm:space-y-0 sm:grid sm:grid-cols-2 sm:gap-6 lg:max-w-4xl lg:mx-auto xl:max-w-none xl:grid-cols-3">
-      {plans.map((plan) => (
+      {allPlans.map((plan) => (
         <div
           key={plan.id}
           className="border border-gray-200 rounded-lg shadow-sm divide-y divide-gray-200"
@@ -67,7 +91,29 @@ const PlanSelection: React.FC<PlanSelectionProps> = ({
               </span>
             </p>
             <button
-              onClick={() => setSelectedPlan(plan)}
+              // onClick={() => setSelectedPlan(plan)}
+              onClick={async () => {
+                const response = await fetch(
+                  "http://localhost:4000/api/payments/create-checkout-session",
+                  {
+                    method: "POST",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${localStorage.getItem("token")}`,
+                    },
+                    credentials: "include",
+                    body: JSON.stringify({
+                      priceId: plan.stripePriceId,
+                      successUrl: "https://example.com/success",
+                      cancelUrl: "https://example.com/cancel",
+                    }),
+                  }
+                );
+
+                const data = await response.json();
+                console.log({ data });
+                window.location.href = data.data.url;
+              }}
               className="mt-8 block w-full bg-indigo-600 border border-transparent rounded-md py-2 text-sm font-semibold text-white text-center hover:bg-indigo-700"
             >
               Select {plan.name}
